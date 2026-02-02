@@ -105,11 +105,12 @@ function updateCountdowns() {
         }
         
         const totalSeconds = Math.floor(diffMs / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
         const seconds = totalSeconds % 60;
         
-        if (minutes > 60) {
-            countdown.textContent = `in ${Math.floor(minutes / 60)}h ${minutes % 60}min`;
+        if (hours > 0) {
+            countdown.textContent = `in ${hours}h ${minutes}min ${seconds}s`;
         } else if (minutes > 0) {
             countdown.textContent = `in ${minutes}min ${seconds}s`;
         } else {
@@ -282,25 +283,17 @@ function displayDepartures(departures) {
                 </div>
             </div>
             <div class="departure-time">
-                ${dep.has_realtime ? `
-                    <div class="departure-actual" data-time="${dep.actual_time}">
-                        <div class="time-label">Tatsächlich:</div>
-                        <div class="time-value">${formatTime(dep.actual_time)}</div>
-                        <div class="countdown" data-target="${dep.actual_time}">Berechne...</div>
-                    </div>
-                    ${dep.planned_time !== dep.estimated_time ? `
-                        <div class="departure-planned">
-                            <div class="time-label">Geplant:</div>
-                            <div class="time-value">${formatTime(dep.planned_time)}</div>
-                        </div>
-                    ` : ''}
-                ` : `
+                <div class="departure-actual" data-time="${dep.actual_time}">
+                    <div class="time-label">${dep.has_realtime ? 'Tatsächlich:' : 'Geplant:'}</div>
+                    <div class="time-value">${formatTimeWithSeconds(dep.actual_time)}</div>
+                    <div class="countdown" data-target="${dep.actual_time}">Berechne...</div>
+                </div>
+                ${dep.has_realtime && dep.planned_time !== dep.estimated_time ? `
                     <div class="departure-planned">
-                        <div class="time-label">Geplant:</div>
+                        <div class="time-label">Geplant war:</div>
                         <div class="time-value">${formatTime(dep.planned_time)}</div>
-                        <div class="countdown" data-target="${dep.planned_time}">Berechne...</div>
                     </div>
-                `}
+                ` : ''}
                 ${delayBadge}
             </div>
         `;
