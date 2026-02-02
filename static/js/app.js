@@ -261,7 +261,9 @@ function displayDepartures(departures) {
         depDiv.dataset.hasRealtime = dep.has_realtime;
         
         const delayClass = dep.delay_minutes > 0 ? 'delayed' : (dep.delay_minutes < 0 ? 'early' : '');
-        depDiv.classList.add(delayClass);
+        if (delayClass) {
+            depDiv.classList.add(delayClass);
+        }
         
         let delayBadge = '';
         if (dep.delay_minutes !== null && dep.delay_minutes !== 0) {
