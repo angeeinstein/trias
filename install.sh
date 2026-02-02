@@ -34,6 +34,7 @@ PYTHON_VERSION="3.9"
 
 # Git repository (will be auto-detected or can be set manually)
 GIT_REPO=""
+DEFAULT_GIT_REPO="https://github.com/angeeinstein/trias.git"
 
 # Script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -115,18 +116,23 @@ prompt_git_repo() {
     echo ""
     print_info "No git repository detected."
     echo "You can either:"
-    echo "  1) Provide a git repository URL to clone from"
-    echo "  2) Use local files (no git updates available)"
+    echo "  1) Use default repository: $DEFAULT_GIT_REPO"
+    echo "  2) Provide a different git repository URL"
+    echo "  3) Use local files (no git updates available)"
     echo ""
-    read -p "Enter git repository URL (or press Enter to use local files): " user_repo
+    read -p "Enter git repository URL (or press Enter for default): " user_repo
     
-    if [ -n "$user_repo" ]; then
+    if [ -z "$user_repo" ]; then
+        GIT_REPO="$DEFAULT_GIT_REPO"
+        print_success "Using default repository: $GIT_REPO"
+        return 0
+    elif [ "$user_repo" = "local" ] || [ "$user_repo" = "skip" ]; then
+        print_info "Will use local files"
+        return 1
+    else
         GIT_REPO="$user_repo"
         print_success "Will use git repository: $GIT_REPO"
         return 0
-    else
-        print_info "Will use local files"
-        return 1
     fi
 }
 
