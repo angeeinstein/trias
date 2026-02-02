@@ -2,9 +2,11 @@
 
 import requests
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
-from config import TRIAS_API_URL, DEFAULT_REQUESTOR_REF, NAMESPACES
+from config import TRIAS_API_URL, DEFAULT_REQUESTOR_REF, NAMESPACES, STOP_CACHE_FILE, STOP_CACHE_TTL_HOURS, STOP_CACHE_ENABLED
+import json
+import os
 
 
 class TriasClient:
@@ -14,6 +16,91 @@ class TriasClient:
         self.api_url = TRIAS_API_URL
         self.requestor_ref = requestor_ref
         self.namespaces = NAMESPACES
+        self.stop_cache = None
+        self.cache_timestamp = None
+        
+        # Load cache on initialization
+        if STOP_CACHE_ENABLED:
+            self._load_stop_cache()
+    
+        # Load cache on initialization
+        if STOP_CACHE_ENABLED:
+            self._load_stop_cache()
+    
+    def _load_stop_cache(self):
+        """Load stop cache from file if it exists and is fresh"""
+        if os.path.exists(STOP_CACHE_FILE):
+            try:
+                with open(STOP_CACHE_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    cache_time = datetime.fromisoformat(data['timestamp'])
+                    
+                    # Check if cache is still valid
+                    if datetime.utcnow() - cache_time < timedelta(hours=STOP_CACHE_TTL_HOURS):
+                        self.stop_cache = data['stops']
+                        self.cache_timestamp = cache_time
+                        print(f"[CACHE] Loaded {len(self.stop_cache)} stops from cache (age: {(datetime.utcnow() - cache_time).total_seconds() / 3600:.1f}h)")
+                        return
+                    else:
+                        print(f"[CACHE] Cache expired")
+            except Exception as e:
+                print(f"[CACHE] Failed to load cache: {e}")
+        
+        # No valid cache - start with empty cache and let it build gradually
+        print("[CACHE] No valid cache found, will build cache from searches")
+        self.stop_cache = []
+        self.cache_timestamp = datetime.utcnow()
+    
+    def _save_stop_cache(self):
+        """Save stop cache to file"""
+        if self.stop_cache:
+            try:
+                data = {
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'stops': self.stop_cache
+                }
+                with open(STOP_CACHE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False)
+                print(f"[CACHE] Saved {len(self.stop_cache)} stops to cache")
+            except Exception as e:
+                print(f"[CACHE] Failed to save cache: {e}")
+    
+    def _add_to_cache(self, stops: List[Dict[str, Any]]):
+        """Add new stops to cache (avoids duplicates)"""
+        if not STOP_CACHE_ENABLED or self.stop_cache is None:
+            return
+        
+        existing_ids = {stop['stop_id'] for stop in self.stop_cache}
+        new_stops = [stop for stop in stops if stop['stop_id'] not in existing_ids]
+        
+        if new_stops:
+            self.stop_cache.extend(new_stops)
+            # Save cache periodically (every 10 new stops)
+            if len(new_stops) >= 10 or len(self.stop_cache) % 50 == 0:
+                self._save_stop_cache()
+    
+    def _search_cache(self, query: str, limit: int) -> Optional[List[Dict[str, Any]]]:
+        """Search the cache for stops matching the query"""
+        if not self.stop_cache:
+            return None
+        
+        query_lower = query.lower()
+        matches = []
+        
+        for stop in self.stop_cache:
+            stop_name = stop.get('stop_name', '').lower()
+            locality = stop.get('locality', '').lower()
+            
+            if query_lower in stop_name or query_lower in locality:
+                matches.append(stop)
+        
+        # Sort by relevance (exact matches first, then contains)
+        matches.sort(key=lambda s: (
+            not s.get('stop_name', '').lower().startswith(query_lower),
+            s.get('stop_name', '')
+        ))
+        
+        return matches[:limit] if matches else None
     
     def _get_timestamp(self) -> str:
         """Generate current UTC timestamp in ISO-8601 format with Z suffix"""
@@ -83,7 +170,40 @@ class TriasClient:
         number_of_results: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Search for stops/locations by name
+        Search for stops/locations by name (uses cache if available)
+        
+        Args:
+            location_name: Name of the location to search for
+            number_of_results: Maximum number of results to return
+            
+        Returns:
+            List of location dictionaries with stop_id, stop_name, coordinates, etc.
+        """
+        # Try cache first if enabled
+        if STOP_CACHE_ENABLED and self.stop_cache is not None:
+            # Search cache
+            cached_results = self._search_cache(location_name, number_of_results)
+            if cached_results:
+                print(f"[CACHE] Found {len(cached_results)} results in cache for '{location_name}'")
+                return cached_results
+        
+        # Fetch from API
+        print(f"[CACHE] Fetching '{location_name}' from API")
+        results = self._fetch_location_by_name(location_name, number_of_results)
+        
+        # Add results to cache for future use
+        if STOP_CACHE_ENABLED:
+            self._add_to_cache(results)
+        
+        return results
+    
+    def _fetch_location_by_name(
+        self, 
+        location_name: str, 
+        number_of_results: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch stops/locations by name from API (bypasses cache)
         
         Args:
             location_name: Name of the location to search for
