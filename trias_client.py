@@ -317,6 +317,12 @@ class TriasClient:
             
             # Sort by distance
             filtered.sort(key=lambda x: x.get('distance', 999999))
+            
+            # Add to cache for future searches
+            if STOP_CACHE_ENABLED and filtered:
+                self._add_to_cache(filtered)
+                print(f"[CACHE] Added {len(filtered)} nearby stops to cache")
+            
             return filtered
         
         return all_results
