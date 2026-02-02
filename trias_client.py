@@ -400,45 +400,58 @@ class TriasClient:
         
         for location_result in location_results:
             try:
-                # Check if it's a StopPoint or just an Address/POI
+                # Check if it's a StopPoint or StopPlace
                 location = location_result.find('trias:Location', self.namespaces)
                 if location is None:
                     continue
                 
-                # Try to find StopPoint first
+                # Try to find StopPoint first, then StopPlace
                 stop_point = location.find('trias:StopPoint', self.namespaces)
+                stop_place = location.find('trias:StopPlace', self.namespaces)
+                
+                stop_ref = None
+                stop_name = None
                 
                 if stop_point is not None:
-                    # This is a public transport stop
-                    stop_point_ref = stop_point.find('trias:StopPointRef', self.namespaces)
-                if stop_point is not None:
-                    # This is a public transport stop
+                    # This is a StopPoint (individual platform/stop)
                     stop_point_ref = stop_point.find('trias:StopPointRef', self.namespaces)
                     if stop_point_ref is None:
                         continue
-                    
-                    # Get StopPointName (actual stop name)
+                    stop_ref = stop_point_ref.text
                     stop_point_name = stop_point.find('trias:StopPointName/trias:Text', self.namespaces)
+                    stop_name = stop_point_name.text if stop_point_name is not None else None
                     
-                    # Get coordinates if available
-                    longitude_elem = location.find('.//trias:Longitude', self.namespaces)
-                    latitude_elem = location.find('.//trias:Latitude', self.namespaces)
-                    
-                    # Get locality name (city/area) if available
-                    locality_name = location.find('.//trias:LocalityName/trias:Text', self.namespaces)
-                    
-                    result = {
-                        'stop_id': stop_point_ref.text,
-                        'stop_name': stop_point_name.text if stop_point_name is not None else None,
-                        'locality': locality_name.text if locality_name is not None else None,
-                        'longitude': float(longitude_elem.text) if longitude_elem is not None else None,
-                        'latitude': float(latitude_elem.text) if latitude_elem is not None else None
-                    }
-                    
-                    results.append(result)
+                elif stop_place is not None:
+                    # This is a StopPlace (stop area/group of platforms)
+                    stop_place_ref = stop_place.find('trias:StopPlaceRef', self.namespaces)
+                    if stop_place_ref is None:
+                        continue
+                    stop_ref = stop_place_ref.text
+                    stop_place_name = stop_place.find('trias:StopPlaceName/trias:Text', self.namespaces)
+                    stop_name = stop_place_name.text if stop_place_name is not None else None
                 else:
                     # Skip addresses/POIs - we only want stops
                     continue
+                
+                if not stop_ref:
+                    continue
+                    
+                # Get coordinates if available
+                longitude_elem = location.find('.//trias:Longitude', self.namespaces)
+                latitude_elem = location.find('.//trias:Latitude', self.namespaces)
+                
+                # Get locality name (city/area) if available
+                locality_name = location.find('.//trias:LocationName/trias:Text', self.namespaces)
+                
+                result = {
+                    'stop_id': stop_ref,
+                    'stop_name': stop_name,
+                    'locality': locality_name.text if locality_name is not None else None,
+                    'longitude': float(longitude_elem.text) if longitude_elem is not None else None,
+                    'latitude': float(latitude_elem.text) if latitude_elem is not None else None
+                }
+                
+                results.append(result)
                 
             except Exception as e:
                 print(f"Error parsing location result: {e}")
