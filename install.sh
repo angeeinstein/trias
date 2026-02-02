@@ -326,6 +326,8 @@ install_application() {
         }
         
         if [ -d "$INSTALL_DIR/.git" ]; then
+            # Add safe.directory to prevent ownership issues
+            git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
             print_success "Repository cloned successfully"
         else
             print_warning "Using local files (no git repository)"
@@ -649,6 +651,9 @@ update_installation() {
     if [ -d ".git" ]; then
         # Update from git repository
         print_info "Pulling latest changes from git repository..."
+        
+        # Fix git ownership issue (safe.directory)
+        git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
         
         # Get current branch
         CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
