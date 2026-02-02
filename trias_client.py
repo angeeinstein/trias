@@ -50,12 +50,19 @@ class TriasClient:
         }
         
         try:
+            # Log request for debugging
+            print(f"[TRIAS] Making request to {self.api_url}")
+            print(f"[TRIAS] Request size: {len(xml_body)} bytes")
+            
             response = requests.post(
                 self.api_url,
                 data=xml_body.encode('utf-8'),
                 headers=headers,
                 timeout=30
             )
+            
+            print(f"[TRIAS] Response status: {response.status_code}")
+            print(f"[TRIAS] Response size: {len(response.content)} bytes")
             
             # Log first part of response if error
             if response.status_code >= 400:
@@ -64,17 +71,22 @@ class TriasClient:
             
             # Check for empty response
             if not response.content or len(response.content.strip()) == 0:
+                print(f"[TRIAS] ERROR: Empty response received")
+                print(f"[TRIAS] Request was: {xml_body[:1000]}")
                 raise Exception("API returned empty response")
             
             # Parse XML response
             try:
-                return ET.fromstring(response.content)
+                root = ET.fromstring(response.content)
+                print(f"[TRIAS] XML parsed successfully, root tag: {root.tag}")
+                return root
             except ET.ParseError as e:
                 print(f"XML Parse Error: {str(e)}")
                 print(f"Response content (first 1000 chars): {response.content[:1000]}")
                 raise Exception(f"Failed to parse XML response: {str(e)}")
             
         except requests.RequestException as e:
+            print(f"[TRIAS] Request exception: {str(e)}")
             raise Exception(f"API request failed: {str(e)}")
     
     def search_location_by_name(
@@ -150,7 +162,8 @@ class TriasClient:
         num_results = ET.SubElement(restrictions, 'NumberOfResults')
         num_results.text = str(number_of_results)
         
-        geo_restriction = ET.SubElement(loc_info_req, 'GeoRestriction')
+        # GeoRestriction with Circle
+        geo_restriction = ET.SubElement(restrictions, 'GeoRestriction')
         circle = ET.SubElement(geo_restriction, 'Circle')
         center = ET.SubElement(circle, 'Center')
         lon_elem = ET.SubElement(center, 'Longitude')
