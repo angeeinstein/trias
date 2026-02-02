@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRIAS - Öffentliche Verkehrsdaten</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚌 TRIAS Fahrplanauskunft</h1>
+            <p class="subtitle">Echtzeitdaten für öffentliche Verkehrsmittel in Österreich</p>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-button active" data-tab="search">🔍 Haltestellensuche</button>
+            <button class="tab-button" data-tab="nearby">📍 In der Nähe</button>
+            <button class="tab-button" data-tab="departures">🚏 Abfahrten</button>
+        </div>
+
+        <!-- Tab: Search by Name -->
+        <div id="search-tab" class="tab-content active">
+            <div class="card">
+                <h2>Haltestelle suchen</h2>
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="z.B. Hauptplatz, Jakominiplatz..." />
+                    <button id="search-btn" class="btn btn-primary">Suchen</button>
+                </div>
+                <div id="search-results" class="results-container"></div>
+            </div>
+        </div>
+
+        <!-- Tab: Nearby Stops -->
+        <div id="nearby-tab" class="tab-content">
+            <div class="card">
+                <h2>Haltestellen in der Nähe</h2>
+                <div class="form-group">
+                    <label for="lat-input">Breitengrad (Latitude):</label>
+                    <input type="number" id="lat-input" step="0.000001" placeholder="47.069250" />
+                </div>
+                <div class="form-group">
+                    <label for="lon-input">Längengrad (Longitude):</label>
+                    <input type="number" id="lon-input" step="0.000001" placeholder="15.409852" />
+                </div>
+                <div class="form-group">
+                    <label for="radius-input">Radius (Meter):</label>
+                    <input type="number" id="radius-input" value="500" min="100" max="5000" step="100" />
+                </div>
+                <div class="button-group">
+                    <button id="nearby-btn" class="btn btn-primary">Suchen</button>
+                    <button id="geolocation-btn" class="btn btn-secondary">📍 Meinen Standort verwenden</button>
+                </div>
+                <div id="nearby-results" class="results-container"></div>
+            </div>
+        </div>
+
+        <!-- Tab: Departures -->
+        <div id="departures-tab" class="tab-content">
+            <div class="card">
+                <h2>Abfahrtszeiten</h2>
+                <div class="form-group">
+                    <label for="stop-id-input">Haltestellen-ID:</label>
+                    <input type="text" id="stop-id-input" placeholder="z.B. at:46:7960" />
+                    <small>Tipp: Suchen Sie zuerst nach einer Haltestelle, um die ID zu erhalten</small>
+                </div>
+                <div class="form-group">
+                    <label for="departure-limit">Anzahl der Abfahrten:</label>
+                    <input type="number" id="departure-limit" value="12" min="1" max="50" />
+                </div>
+                <div class="form-group">
+                    <label for="departure-window">Zeitfenster (Minuten):</label>
+                    <input type="number" id="departure-window" value="60" min="15" max="240" step="15" />
+                </div>
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="realtime-check" checked />
+                        Echtzeitdaten einbeziehen
+                    </label>
+                </div>
+                <button id="departures-btn" class="btn btn-primary">Abfahrten abrufen</button>
+                <div id="departures-results" class="results-container"></div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Datenquelle: <a href="http://ogdtrias.verbundlinie.at:8183/stv/trias" target="_blank">TRIAS (Verbund Linie OGD)</a></p>
+        </footer>
+    </div>
+
+    <div id="loading" class="loading hidden">
+        <div class="spinner"></div>
+        <p>Lade Daten...</p>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

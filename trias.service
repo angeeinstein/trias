@@ -1,0 +1,20 @@
+[Unit]
+Description=TRIAS API Server - Public Transit Information
+After=network.target
+
+[Service]
+Type=notify
+User=trias
+Group=trias
+WorkingDirectory=/opt/trias
+Environment="PATH=/opt/trias/venv/bin"
+ExecStart=/opt/trias/venv/bin/gunicorn --config /opt/trias/gunicorn_config.py app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

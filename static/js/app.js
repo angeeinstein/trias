@@ -1,0 +1,344 @@
+// API base URL
+const API_BASE = window.location.origin;
+
+// DOM Elements
+const tabs = document.querySelectorAll('.tab-button');
+const tabContents = document.querySelectorAll('.tab-content');
+const loading = document.getElementById('loading');
+
+// Search tab
+const searchInput = document.getElementById('search-input');
+const searchBtn = document.getElementById('search-btn');
+const searchResults = document.getElementById('search-results');
+
+// Nearby tab
+const latInput = document.getElementById('lat-input');
+const lonInput = document.getElementById('lon-input');
+const radiusInput = document.getElementById('radius-input');
+const nearbyBtn = document.getElementById('nearby-btn');
+const geolocationBtn = document.getElementById('geolocation-btn');
+const nearbyResults = document.getElementById('nearby-results');
+
+// Departures tab
+const stopIdInput = document.getElementById('stop-id-input');
+const departureLimitInput = document.getElementById('departure-limit');
+const departureWindowInput = document.getElementById('departure-window');
+const realtimeCheck = document.getElementById('realtime-check');
+const departuresBtn = document.getElementById('departures-btn');
+const departuresResults = document.getElementById('departures-results');
+
+// Tab switching
+tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        
+        // Update active tab button
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update active tab content
+        tabContents.forEach(content => content.classList.remove('active'));
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+    });
+});
+
+// Show/hide loading overlay
+function showLoading() {
+    loading.classList.remove('hidden');
+}
+
+function hideLoading() {
+    loading.classList.add('hidden');
+}
+
+// Display error message
+function showError(container, message) {
+    container.innerHTML = `<div class="error-message">❌ ${message}</div>`;
+}
+
+// Display info message
+function showInfo(container, message) {
+    container.innerHTML = `<div class="info-message">ℹ️ ${message}</div>`;
+}
+
+// Format time from ISO string
+function formatTime(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Search for locations by name
+async function searchLocation(query) {
+    showLoading();
+    searchResults.innerHTML = '';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/search/location?q=${encodeURIComponent(query)}&limit=20`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Fehler beim Laden der Daten');
+        }
+        
+        if (data.results.length === 0) {
+            showInfo(searchResults, 'Keine Haltestellen gefunden. Versuchen Sie einen anderen Suchbegriff.');
+            return;
+        }
+        
+        displayLocationResults(searchResults, data.results);
+    } catch (error) {
+        showError(searchResults, error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// Search for nearby locations
+async function searchNearby(lat, lon, radius) {
+    showLoading();
+    nearbyResults.innerHTML = '';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/search/nearby?lat=${lat}&lon=${lon}&radius=${radius}&limit=50`);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Fehler beim Laden der Daten');
+        }
+        
+        if (data.results.length === 0) {
+            showInfo(nearbyResults, 'Keine Haltestellen in der Nähe gefunden. Versuchen Sie einen größeren Radius.');
+            return;
+        }
+        
+        displayLocationResults(nearbyResults, data.results);
+    } catch (error) {
+        showError(nearbyResults, error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// Get departures for a stop
+async function getDepartures(stopId, limit, window, realtime) {
+    showLoading();
+    departuresResults.innerHTML = '';
+    
+    try {
+        const response = await fetch(
+            `${API_BASE}/api/departures?stop_id=${encodeURIComponent(stopId)}&limit=${limit}&window=${window}&realtime=${realtime}`
+        );
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Fehler beim Laden der Daten');
+        }
+        
+        if (data.departures.length === 0) {
+            showInfo(departuresResults, 'Keine Abfahrten in diesem Zeitfenster gefunden.');
+            return;
+        }
+        
+        displayDepartures(data.departures);
+    } catch (error) {
+        showError(departuresResults, error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// Display location results
+function displayLocationResults(container, results) {
+    container.innerHTML = results.map(result => `
+        <div class="result-item" onclick="selectStop('${result.stop_id}', '${escapeHtml(result.stop_name)}')">
+            <h3>${escapeHtml(result.stop_name || 'Unbekannt')}</h3>
+            ${result.locality ? `<p>📍 ${escapeHtml(result.locality)}</p>` : ''}
+            ${result.latitude && result.longitude ? 
+                `<p>🌐 ${result.latitude.toFixed(6)}, ${result.longitude.toFixed(6)}</p>` : ''}
+            <span class="stop-id">${escapeHtml(result.stop_id)}</span>
+        </div>
+    `).join('');
+}
+
+// Display departures
+function displayDepartures(departures) {
+    departuresResults.innerHTML = departures.map(dep => {
+        const delayClass = dep.delay_minutes > 0 ? 'delayed' : (dep.delay_minutes < 0 ? 'early' : '');
+        const showPlanned = dep.estimated_time && dep.planned_time !== dep.estimated_time;
+        
+        let delayBadge = '';
+        if (dep.delay_minutes !== null && dep.delay_minutes !== 0) {
+            const delayClass2 = dep.delay_minutes > 0 ? 'positive' : 'negative';
+            const delaySign = dep.delay_minutes > 0 ? '+' : '';
+            delayBadge = `<div class="departure-delay ${delayClass2}">${delaySign}${dep.delay_minutes} min</div>`;
+        }
+        
+        return `
+            <div class="departure-item ${delayClass}">
+                <div class="departure-info">
+                    <div>
+                        <span class="departure-line">${escapeHtml(dep.line || '?')}</span>
+                        <span class="departure-destination">${escapeHtml(dep.destination || 'Unbekannt')}</span>
+                        ${dep.mode ? `<span class="departure-mode">${escapeHtml(dep.mode)}</span>` : ''}
+                        ${dep.has_realtime ? '<span class="departure-realtime-badge">Live</span>' : ''}
+                    </div>
+                </div>
+                <div class="departure-time">
+                    <div class="departure-actual">${formatTime(dep.actual_time)}</div>
+                    ${showPlanned ? `<div class="departure-planned">${formatTime(dep.planned_time)}</div>` : ''}
+                    ${delayBadge}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// Select a stop (switch to departures tab and fill in stop ID)
+function selectStop(stopId, stopName) {
+    stopIdInput.value = stopId;
+    
+    // Switch to departures tab
+    tabs.forEach(t => t.classList.remove('active'));
+    tabContents.forEach(c => c.classList.remove('active'));
+    
+    document.querySelector('[data-tab="departures"]').classList.add('active');
+    document.getElementById('departures-tab').classList.add('active');
+    
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Event Listeners
+
+// Search button
+searchBtn.addEventListener('click', () => {
+    const query = searchInput.value.trim();
+    if (query) {
+        searchLocation(query);
+    } else {
+        showError(searchResults, 'Bitte geben Sie einen Suchbegriff ein.');
+    }
+});
+
+// Enter key in search input
+searchInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        searchBtn.click();
+    }
+});
+
+// Nearby search button
+nearbyBtn.addEventListener('click', () => {
+    const lat = parseFloat(latInput.value);
+    const lon = parseFloat(lonInput.value);
+    const radius = parseInt(radiusInput.value);
+    
+    if (isNaN(lat) || isNaN(lon)) {
+        showError(nearbyResults, 'Bitte geben Sie gültige Koordinaten ein.');
+        return;
+    }
+    
+    if (isNaN(radius) || radius < 100) {
+        showError(nearbyResults, 'Bitte geben Sie einen gültigen Radius (min. 100m) ein.');
+        return;
+    }
+    
+    searchNearby(lat, lon, radius);
+});
+
+// Geolocation button
+geolocationBtn.addEventListener('click', () => {
+    if (!navigator.geolocation) {
+        showError(nearbyResults, 'Geolocation wird von Ihrem Browser nicht unterstützt.');
+        return;
+    }
+    
+    showLoading();
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            hideLoading();
+            latInput.value = position.coords.latitude.toFixed(6);
+            lonInput.value = position.coords.longitude.toFixed(6);
+            
+            // Automatically search
+            nearbyBtn.click();
+        },
+        (error) => {
+            hideLoading();
+            showError(nearbyResults, 'Standort konnte nicht ermittelt werden: ' + error.message);
+        }
+    );
+});
+
+// Departures button
+departuresBtn.addEventListener('click', () => {
+    const stopId = stopIdInput.value.trim();
+    const limit = parseInt(departureLimitInput.value);
+    const window = parseInt(departureWindowInput.value);
+    const realtime = realtimeCheck.checked;
+    
+    if (!stopId) {
+        showError(departuresResults, 'Bitte geben Sie eine Haltestellen-ID ein.');
+        return;
+    }
+    
+    getDepartures(stopId, limit, window, realtime);
+});
+
+// Enter key in stop ID input
+stopIdInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        departuresBtn.click();
+    }
+});
+
+// Auto-refresh departures every 30 seconds when on departures tab
+let autoRefreshInterval = null;
+
+function startAutoRefresh() {
+    stopAutoRefresh();
+    autoRefreshInterval = setInterval(() => {
+        const departuresTab = document.getElementById('departures-tab');
+        if (departuresTab.classList.contains('active') && stopIdInput.value.trim()) {
+            // Silently refresh without showing loading overlay
+            const stopId = stopIdInput.value.trim();
+            const limit = parseInt(departureLimitInput.value);
+            const window = parseInt(departureWindowInput.value);
+            const realtime = realtimeCheck.checked;
+            
+            fetch(`${API_BASE}/api/departures?stop_id=${encodeURIComponent(stopId)}&limit=${limit}&window=${window}&realtime=${realtime}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.departures && data.departures.length > 0) {
+                        displayDepartures(data.departures);
+                    }
+                })
+                .catch(error => console.error('Auto-refresh failed:', error));
+        }
+    }, 30000); // 30 seconds
+}
+
+// Start auto-refresh when viewing departures
+document.querySelector('[data-tab="departures"]').addEventListener('click', startAutoRefresh);
+
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+    }
+}
+
+// Stop auto-refresh when switching tabs
+tabs.forEach(tab => {
+    if (tab.dataset.tab !== 'departures') {
+        tab.addEventListener('click', stopAutoRefresh);
+    }
+});
