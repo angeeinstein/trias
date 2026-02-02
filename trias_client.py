@@ -393,34 +393,52 @@ class TriasClient:
             # Print first 2000 chars of response for debugging
             response_str = ET.tostring(root, encoding='unicode')
             print(f"[TRIAS] Response structure (first 2000 chars): {response_str[:2000]}")
+        elif len(location_results) > 0:
+            # Print first result for debugging
+            first_result = ET.tostring(location_results[0], encoding='unicode')
+            print(f"[TRIAS] First LocationResult (first 800 chars): {first_result[:800]}")
         
         for location_result in location_results:
             try:
-                # Get StopPointRef (unique stop ID)
-                stop_point_ref = location_result.find('.//trias:StopPointRef', self.namespaces)
-                if stop_point_ref is None:
-                    print(f"[TRIAS] Skipping result - no StopPointRef found")
+                # Check if it's a StopPoint or just an Address/POI
+                location = location_result.find('trias:Location', self.namespaces)
+                if location is None:
                     continue
                 
-                # Get StopPointName (actual stop name)
-                stop_point_name = location_result.find('.//trias:StopPointName/trias:Text', self.namespaces)
+                # Try to find StopPoint first
+                stop_point = location.find('trias:StopPoint', self.namespaces)
                 
-                # Get coordinates if available
-                longitude_elem = location_result.find('.//trias:Longitude', self.namespaces)
-                latitude_elem = location_result.find('.//trias:Latitude', self.namespaces)
-                
-                # Get locality name (city/area) if available
-                locality_name = location_result.find('.//trias:LocalityName/trias:Text', self.namespaces)
-                
-                result = {
-                    'stop_id': stop_point_ref.text,
-                    'stop_name': stop_point_name.text if stop_point_name is not None else None,
-                    'locality': locality_name.text if locality_name is not None else None,
-                    'longitude': float(longitude_elem.text) if longitude_elem is not None else None,
-                    'latitude': float(latitude_elem.text) if latitude_elem is not None else None
-                }
-                
-                results.append(result)
+                if stop_point is not None:
+                    # This is a public transport stop
+                    stop_point_ref = stop_point.find('trias:StopPointRef', self.namespaces)
+                if stop_point is not None:
+                    # This is a public transport stop
+                    stop_point_ref = stop_point.find('trias:StopPointRef', self.namespaces)
+                    if stop_point_ref is None:
+                        continue
+                    
+                    # Get StopPointName (actual stop name)
+                    stop_point_name = stop_point.find('trias:StopPointName/trias:Text', self.namespaces)
+                    
+                    # Get coordinates if available
+                    longitude_elem = location.find('.//trias:Longitude', self.namespaces)
+                    latitude_elem = location.find('.//trias:Latitude', self.namespaces)
+                    
+                    # Get locality name (city/area) if available
+                    locality_name = location.find('.//trias:LocalityName/trias:Text', self.namespaces)
+                    
+                    result = {
+                        'stop_id': stop_point_ref.text,
+                        'stop_name': stop_point_name.text if stop_point_name is not None else None,
+                        'locality': locality_name.text if locality_name is not None else None,
+                        'longitude': float(longitude_elem.text) if longitude_elem is not None else None,
+                        'latitude': float(latitude_elem.text) if latitude_elem is not None else None
+                    }
+                    
+                    results.append(result)
+                else:
+                    # Skip addresses/POIs - we only want stops
+                    continue
                 
             except Exception as e:
                 print(f"Error parsing location result: {e}")
