@@ -186,18 +186,34 @@ class TriasClient:
         # Parse response and filter by radius manually
         all_results = self._parse_location_results(response_root)
         
+        print(f"[TRIAS] Found {len(all_results)} total results before filtering")
+        
         # Filter results by distance from center point
         if all_results:
+            import math
             filtered = []
             for result in all_results:
                 if result.get('latitude') and result.get('longitude'):
-                    # Calculate simple distance (good enough for small areas)
-                    lat_diff = result['latitude'] - latitude
-                    lon_diff = result['longitude'] - longitude
-                    # Approximate distance in meters (1 degree ≈ 111km)
-                    dist = ((lat_diff * 111000) ** 2 + (lon_diff * 111000) ** 2) ** 0.5
+                    # Haversine distance calculation for more accuracy
+                    lat1, lon1 = math.radians(latitude), math.radians(longitude)
+                    lat2, lon2 = math.radians(result['latitude']), math.radians(result['longitude'])
+                    
+                    dlat = lat2 - lat1
+                    dlon = lon2 - lon1
+                    
+                    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+                    c = 2 * math.asin(math.sqrt(a))
+                    dist = 6371000 * c  # Earth radius in meters
+                    
+                    print(f"[TRIAS] {result['stop_name']}: {dist:.0f}m from center (limit: {radius}m)")
+                    
                     if dist <= radius:
+                        result['distance'] = round(dist)
                         filtered.append(result)
+            
+            print(f"[TRIAS] Filtered to {len(filtered)} results within {radius}m")
+            # Sort by distance
+            filtered.sort(key=lambda x: x.get('distance', 999999))
             return filtered
         
         return all_results
