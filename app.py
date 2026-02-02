@@ -8,6 +8,20 @@ app = Flask(__name__)
 trias = TriasClient()
 
 
+@app.after_request
+def add_cache_headers(response):
+    """Add cache control headers to prevent caching issues"""
+    # Don't cache API responses and HTML pages
+    if request.path.startswith('/api/') or request.path == '/':
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, public, max-age=0'
+        response.headers['Expires'] = '0'
+        response.headers['Pragma'] = 'no-cache'
+    # Allow caching for static files but validate
+    elif request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'public, max-age=300, must-revalidate'
+    return response
+
+
 @app.route('/')
 def index():
     """Serve the web interface"""

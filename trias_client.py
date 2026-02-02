@@ -50,19 +50,12 @@ class TriasClient:
         }
         
         try:
-            # Log request for debugging
-            print(f"[TRIAS] Making request to {self.api_url}")
-            print(f"[TRIAS] Request size: {len(xml_body)} bytes")
-            
             response = requests.post(
                 self.api_url,
                 data=xml_body.encode('utf-8'),
                 headers=headers,
                 timeout=30
             )
-            
-            print(f"[TRIAS] Response status: {response.status_code}")
-            print(f"[TRIAS] Response size: {len(response.content)} bytes")
             
             # Log first part of response if error
             if response.status_code >= 400:
@@ -71,22 +64,17 @@ class TriasClient:
             
             # Check for empty response
             if not response.content or len(response.content.strip()) == 0:
-                print(f"[TRIAS] ERROR: Empty response received")
-                print(f"[TRIAS] Request was: {xml_body[:1000]}")
                 raise Exception("API returned empty response")
             
             # Parse XML response
             try:
-                root = ET.fromstring(response.content)
-                print(f"[TRIAS] XML parsed successfully, root tag: {root.tag}")
-                return root
+                return ET.fromstring(response.content)
             except ET.ParseError as e:
                 print(f"XML Parse Error: {str(e)}")
                 print(f"Response content (first 1000 chars): {response.content[:1000]}")
                 raise Exception(f"Failed to parse XML response: {str(e)}")
             
         except requests.RequestException as e:
-            print(f"[TRIAS] Request exception: {str(e)}")
             raise Exception(f"API request failed: {str(e)}")
     
     def search_location_by_name(
@@ -186,8 +174,6 @@ class TriasClient:
         # Parse response and filter by radius manually
         all_results = self._parse_location_results(response_root)
         
-        print(f"[TRIAS] Found {len(all_results)} total results before filtering")
-        
         # Filter results by distance from center point
         if all_results:
             import math
@@ -205,13 +191,10 @@ class TriasClient:
                     c = 2 * math.asin(math.sqrt(a))
                     dist = 6371000 * c  # Earth radius in meters
                     
-                    print(f"[TRIAS] {result['stop_name']}: {dist:.0f}m from center (limit: {radius}m)")
-                    
                     if dist <= radius:
                         result['distance'] = round(dist)
                         filtered.append(result)
             
-            print(f"[TRIAS] Filtered to {len(filtered)} results within {radius}m")
             # Sort by distance
             filtered.sort(key=lambda x: x.get('distance', 999999))
             return filtered
@@ -377,26 +360,8 @@ class TriasClient:
         """Parse LocationInformationResponse"""
         results = []
         
-        # Debug: Print what we're looking for
-        print(f"[TRIAS] Looking for LocationResult elements in response")
-        
         # Find all LocationResult elements
         location_results = root.findall('.//trias:LocationResult', self.namespaces)
-        print(f"[TRIAS] Found {len(location_results)} LocationResult elements")
-        
-        # If no LocationResult found, try to find what structure we have
-        if len(location_results) == 0:
-            # Check if we have Location elements instead
-            locations = root.findall('.//trias:Location', self.namespaces)
-            print(f"[TRIAS] Found {len(locations)} Location elements instead")
-            
-            # Print first 2000 chars of response for debugging
-            response_str = ET.tostring(root, encoding='unicode')
-            print(f"[TRIAS] Response structure (first 2000 chars): {response_str[:2000]}")
-        elif len(location_results) > 0:
-            # Print first result for debugging
-            first_result = ET.tostring(location_results[0], encoding='unicode')
-            print(f"[TRIAS] First LocationResult (first 800 chars): {first_result[:800]}")
         
         for location_result in location_results:
             try:
