@@ -377,12 +377,29 @@ class TriasClient:
         """Parse LocationInformationResponse"""
         results = []
         
+        # Debug: Print what we're looking for
+        print(f"[TRIAS] Looking for LocationResult elements in response")
+        
         # Find all LocationResult elements
-        for location_result in root.findall('.//trias:LocationResult', self.namespaces):
+        location_results = root.findall('.//trias:LocationResult', self.namespaces)
+        print(f"[TRIAS] Found {len(location_results)} LocationResult elements")
+        
+        # If no LocationResult found, try to find what structure we have
+        if len(location_results) == 0:
+            # Check if we have Location elements instead
+            locations = root.findall('.//trias:Location', self.namespaces)
+            print(f"[TRIAS] Found {len(locations)} Location elements instead")
+            
+            # Print first 2000 chars of response for debugging
+            response_str = ET.tostring(root, encoding='unicode')
+            print(f"[TRIAS] Response structure (first 2000 chars): {response_str[:2000]}")
+        
+        for location_result in location_results:
             try:
                 # Get StopPointRef (unique stop ID)
                 stop_point_ref = location_result.find('.//trias:StopPointRef', self.namespaces)
                 if stop_point_ref is None:
+                    print(f"[TRIAS] Skipping result - no StopPointRef found")
                     continue
                 
                 # Get StopPointName (actual stop name)
