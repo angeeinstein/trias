@@ -47,6 +47,12 @@ tabs.forEach(tab => {
         // Update active tab content
         tabContents.forEach(content => content.classList.remove('active'));
         document.getElementById(`${tabName}-tab`).classList.add('active');
+        
+        // Clear countdown interval when leaving departures tab
+        if (tabName !== 'departures' && window.countdownInterval) {
+            clearInterval(window.countdownInterval);
+            window.countdownInterval = null;
+        }
     });
 });
 
@@ -74,6 +80,44 @@ function formatTime(isoString) {
     if (!isoString) return '-';
     const date = new Date(isoString);
     return date.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Format time with seconds from ISO string
+function formatTimeWithSeconds(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// Calculate and update countdowns
+function updateCountdowns() {
+    const now = new Date();
+    const countdowns = document.querySelectorAll('.countdown[data-target]');
+    
+    countdowns.forEach(countdown => {
+        const targetTime = new Date(countdown.dataset.target);
+        const diffMs = targetTime - now;
+        
+        if (diffMs < 0) {
+            countdown.textContent = 'Abgefahren';
+            countdown.style.color = '#999';
+            return;
+        }
+        
+        const totalSeconds = Math.floor(diffMs / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        
+        if (minutes > 60) {
+            countdown.textContent = `in ${Math.floor(minutes / 60)}h ${minutes % 60}min`;
+        } else if (minutes > 0) {
+            countdown.textContent = `in ${minutes}min ${seconds}s`;
+        } else {
+            countdown.textContent = `in ${seconds}s`;
+            countdown.style.fontWeight = 'bold';
+            countdown.style.color = '#ef4444';
+        }
+    });
 }
 
 // Search for locations by name
@@ -207,9 +251,17 @@ function displayLocationResults(container, results) {
 
 // Display departures
 function displayDepartures(departures) {
-    departuresResults.innerHTML = departures.map(dep => {
+    departuresResults.innerHTML = '';
+    
+    departures.forEach((dep, index) => {
+        const depDiv = document.createElement('div');
+        depDiv.className = 'departure-item';
+        depDiv.dataset.index = index;
+        depDiv.dataset.actualTime = dep.actual_time;
+        depDiv.dataset.hasRealtime = dep.has_realtime;
+        
         const delayClass = dep.delay_minutes > 0 ? 'delayed' : (dep.delay_minutes < 0 ? 'early' : '');
-        const showPlanned = dep.estimated_time && dep.planned_time !== dep.estimated_time;
+        depDiv.classList.add(delayClass);
         
         let delayBadge = '';
         if (dep.delay_minutes !== null && dep.delay_minutes !== 0) {
@@ -218,24 +270,48 @@ function displayDepartures(departures) {
             delayBadge = `<div class="departure-delay ${delayClass2}">${delaySign}${dep.delay_minutes} min</div>`;
         }
         
-        return `
-            <div class="departure-item ${delayClass}">
-                <div class="departure-info">
-                    <div>
-                        <span class="departure-line">${escapeHtml(dep.line || '?')}</span>
-                        <span class="departure-destination">${escapeHtml(dep.destination || 'Unbekannt')}</span>
-                        ${dep.mode ? `<span class="departure-mode">${escapeHtml(dep.mode)}</span>` : ''}
-                        ${dep.has_realtime ? '<span class="departure-realtime-badge">Live</span>' : ''}
-                    </div>
-                </div>
-                <div class="departure-time">
-                    <div class="departure-actual">${formatTime(dep.actual_time)}</div>
-                    ${showPlanned ? `<div class="departure-planned">${formatTime(dep.planned_time)}</div>` : ''}
-                    ${delayBadge}
+        depDiv.innerHTML = `
+            <div class="departure-info">
+                <div>
+                    <span class="departure-line">${escapeHtml(dep.line || '?')}</span>
+                    <span class="departure-destination">${escapeHtml(dep.destination || 'Unbekannt')}</span>
+                    ${dep.mode ? `<span class="departure-mode">${escapeHtml(dep.mode)}</span>` : ''}
+                    ${dep.has_realtime ? '<span class="departure-realtime-badge">🔴 Live</span>' : '<span class="departure-static-badge">📅 Fahrplan</span>'}
                 </div>
             </div>
+            <div class="departure-time">
+                ${dep.has_realtime ? `
+                    <div class="departure-actual" data-time="${dep.actual_time}">
+                        <div class="time-label">Tatsächlich:</div>
+                        <div class="time-value">${formatTime(dep.actual_time)}</div>
+                        <div class="countdown" data-target="${dep.actual_time}">Berechne...</div>
+                    </div>
+                    ${dep.planned_time !== dep.estimated_time ? `
+                        <div class="departure-planned">
+                            <div class="time-label">Geplant:</div>
+                            <div class="time-value">${formatTime(dep.planned_time)}</div>
+                        </div>
+                    ` : ''}
+                ` : `
+                    <div class="departure-planned">
+                        <div class="time-label">Geplant:</div>
+                        <div class="time-value">${formatTime(dep.planned_time)}</div>
+                        <div class="countdown" data-target="${dep.planned_time}">Berechne...</div>
+                    </div>
+                `}
+                ${delayBadge}
+            </div>
         `;
-    }).join('');
+        
+        departuresResults.appendChild(depDiv);
+    });
+    
+    // Start countdown updates
+    updateCountdowns();
+    if (window.countdownInterval) {
+        clearInterval(window.countdownInterval);
+    }
+    window.countdownInterval = setInterval(updateCountdowns, 1000);
 }
 
 // Display trips/routes

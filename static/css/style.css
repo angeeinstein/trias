@@ -333,19 +333,45 @@ input[type="number"]:focus {
 
 .departure-time {
     text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 
-.departure-actual {
+.departure-actual,
+.departure-planned {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.time-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin-bottom: 0.1rem;
+}
+
+.time-value {
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--text-primary);
 }
 
-.departure-planned {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
+.departure-planned .time-value {
+    font-size: 1rem;
     text-decoration: line-through;
-    margin-top: 0.25rem;
+    color: var(--text-secondary);
+}
+
+.countdown {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-top: 0.2rem;
+    padding: 0.2rem 0.5rem;
+    background: rgba(37, 99, 235, 0.1);
+    border-radius: 4px;
 }
 
 .departure-delay {
@@ -354,7 +380,7 @@ input[type="number"]:focus {
     border-radius: 4px;
     font-size: 0.875rem;
     font-weight: 600;
-    margin-top: 0.25rem;
+    align-self: flex-end;
 }
 
 .departure-delay.positive {
@@ -375,6 +401,26 @@ input[type="number"]:focus {
     border-radius: 4px;
     font-size: 0.75rem;
     margin-left: 0.5rem;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.departure-static-badge {
+    display: inline-block;
+    background: var(--secondary-color);
+    color: white;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    margin-left: 0.5rem;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
 }
 
 /* Loading Overlay */

@@ -62,8 +62,17 @@ class TriasClient:
                 print(f"HTTP {response.status_code}: {response.text[:2000]}")
                 response.raise_for_status()
             
+            # Check for empty response
+            if not response.content or len(response.content.strip()) == 0:
+                raise Exception("API returned empty response")
+            
             # Parse XML response
-            return ET.fromstring(response.content)
+            try:
+                return ET.fromstring(response.content)
+            except ET.ParseError as e:
+                print(f"XML Parse Error: {str(e)}")
+                print(f"Response content (first 1000 chars): {response.content[:1000]}")
+                raise Exception(f"Failed to parse XML response: {str(e)}")
             
         except requests.RequestException as e:
             raise Exception(f"API request failed: {str(e)}")
@@ -432,11 +441,12 @@ class TriasClient:
                 actual_time_str = estimated_time_str if estimated_time_str else planned_time_str
                 
                 delay_minutes = None
+                delay_seconds = None
                 if planned_time_str and estimated_time_str:
                     try:
                         planned = datetime.fromisoformat(planned_time_str.replace('Z', '+00:00'))
                         estimated = datetime.fromisoformat(estimated_time_str.replace('Z', '+00:00'))
-                        delay_seconds = (estimated - planned).total_seconds()
+                        delay_seconds = int((estimated - planned).total_seconds())
                         delay_minutes = round(delay_seconds / 60)
                     except:
                         pass
@@ -449,7 +459,9 @@ class TriasClient:
                     'estimated_time': estimated_time_str,
                     'actual_time': actual_time_str,
                     'delay_minutes': delay_minutes,
-                    'has_realtime': estimated_time_str is not None
+                    'delay_seconds': delay_seconds,
+                    'has_realtime': estimated_time_str is not None,
+                    'current_time': datetime.utcnow().isoformat() + 'Z'
                 }
                 
                 results.append(result)
