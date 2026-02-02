@@ -3,7 +3,7 @@ Description=TRIAS API Server - Public Transit Information
 After=network.target
 
 [Service]
-Type=notify
+Type=exec
 User=trias
 Group=trias
 WorkingDirectory=/opt/trias
