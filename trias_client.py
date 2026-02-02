@@ -153,25 +153,28 @@ class TriasClient:
         """
         trias, request_payload = self._create_base_request()
         
-        # Build LocationInformationRequest with GeoRestriction
+        # Build LocationInformationRequest with InitialInput containing coordinates
         loc_info_req = ET.SubElement(request_payload, 'LocationInformationRequest')
         
+        # Use InitialInput with GeoPosition (some TRIAS implementations require this)
+        initial_input = ET.SubElement(loc_info_req, 'InitialInput')
+        geo_position = ET.SubElement(initial_input, 'GeoPosition')
+        lon_elem = ET.SubElement(geo_position, 'Longitude')
+        lon_elem.text = str(longitude)
+        lat_elem = ET.SubElement(geo_position, 'Latitude')
+        lat_elem.text = str(latitude)
+        
+        # Add restrictions
         restrictions = ET.SubElement(loc_info_req, 'Restrictions')
         type_elem = ET.SubElement(restrictions, 'Type')
         type_elem.text = 'stop'
         num_results = ET.SubElement(restrictions, 'NumberOfResults')
         num_results.text = str(number_of_results)
         
-        # GeoRestriction with Circle
-        geo_restriction = ET.SubElement(restrictions, 'GeoRestriction')
-        circle = ET.SubElement(geo_restriction, 'Circle')
-        center = ET.SubElement(circle, 'Center')
-        lon_elem = ET.SubElement(center, 'Longitude')
-        lon_elem.text = str(longitude)
-        lat_elem = ET.SubElement(center, 'Latitude')
-        lat_elem.text = str(latitude)
-        radius_elem = ET.SubElement(circle, 'Radius')
-        radius_elem.text = str(radius)
+        # Add PtModes to only get public transport stops
+        pt_modes = ET.SubElement(restrictions, 'PtModes')
+        include_all = ET.SubElement(pt_modes, 'IncludeAllModes')
+        include_all.text = 'true'
         
         # Convert to string and make request
         xml_string = ET.tostring(trias, encoding='utf-8', method='xml')
@@ -180,8 +183,24 @@ class TriasClient:
         
         response_root = self._make_request(xml_body.decode('utf-8'))
         
-        # Parse response
-        return self._parse_location_results(response_root)
+        # Parse response and filter by radius manually
+        all_results = self._parse_location_results(response_root)
+        
+        # Filter results by distance from center point
+        if all_results:
+            filtered = []
+            for result in all_results:
+                if result.get('latitude') and result.get('longitude'):
+                    # Calculate simple distance (good enough for small areas)
+                    lat_diff = result['latitude'] - latitude
+                    lon_diff = result['longitude'] - longitude
+                    # Approximate distance in meters (1 degree ≈ 111km)
+                    dist = ((lat_diff * 111000) ** 2 + (lon_diff * 111000) ** 2) ** 0.5
+                    if dist <= radius:
+                        filtered.append(result)
+            return filtered
+        
+        return all_results
     
     def get_departures(
         self,
