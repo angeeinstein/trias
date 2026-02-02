@@ -211,6 +211,111 @@ class TriasClient:
         # Parse response
         return self._parse_departure_results(response_root)
     
+    def get_trip(
+        self,
+        origin: str,
+        destination: str,
+        number_of_results: int = 5,
+        include_realtime: bool = True,
+        departure_time: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """
+        Get trip/route from origin to destination
+        
+        Args:
+            origin: Origin location name or address
+            destination: Destination location name or address
+            number_of_results: Maximum number of trip options to return
+            include_realtime: Whether to include realtime data
+            departure_time: Departure time (defaults to now)
+            
+        Returns:
+            Dictionary with origin, destination, and list of trips
+        """
+        # Resolve origin location
+        origin_results = self.search_location_by_name(origin, 10)
+        if not origin_results:
+            raise Exception(f"Could not resolve origin: {origin}")
+        origin_loc = origin_results[0]
+        
+        # Resolve destination location
+        dest_results = self.search_location_by_name(destination, 10)
+        if not dest_results:
+            raise Exception(f"Could not resolve destination: {destination}")
+        dest_loc = dest_results[0]
+        
+        # Build trip request
+        trias, request_payload = self._create_base_request()
+        
+        trip_req = ET.SubElement(request_payload, 'TripRequest')
+        
+        # Origin
+        origin_elem = ET.SubElement(trip_req, 'Origin')
+        origin_ref = ET.SubElement(origin_elem, 'LocationRef')
+        if origin_loc.get('stop_id'):
+            stop_ref = ET.SubElement(origin_ref, 'StopPointRef')
+            stop_ref.text = origin_loc['stop_id']
+        elif origin_loc.get('latitude') and origin_loc.get('longitude'):
+            geo_pos = ET.SubElement(origin_ref, 'GeoPosition')
+            lon = ET.SubElement(geo_pos, 'Longitude')
+            lon.text = str(origin_loc['longitude'])
+            lat = ET.SubElement(geo_pos, 'Latitude')
+            lat.text = str(origin_loc['latitude'])
+        
+        # Destination
+        dest_elem = ET.SubElement(trip_req, 'Destination')
+        dest_ref = ET.SubElement(dest_elem, 'LocationRef')
+        if dest_loc.get('stop_id'):
+            stop_ref = ET.SubElement(dest_ref, 'StopPointRef')
+            stop_ref.text = dest_loc['stop_id']
+        elif dest_loc.get('latitude') and dest_loc.get('longitude'):
+            geo_pos = ET.SubElement(dest_ref, 'GeoPosition')
+            lon = ET.SubElement(geo_pos, 'Longitude')
+            lon.text = str(dest_loc['longitude'])
+            lat = ET.SubElement(geo_pos, 'Latitude')
+            lat.text = str(dest_loc['latitude'])
+        
+        # Departure time
+        if departure_time is None:
+            departure_time = datetime.utcnow()
+        dep_time = ET.SubElement(trip_req, 'DepArrTime')
+        dep_time.text = departure_time.strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        # Parameters
+        params = ET.SubElement(trip_req, 'Params')
+        num_results = ET.SubElement(params, 'NumberOfResults')
+        num_results.text = str(number_of_results)
+        include_rt = ET.SubElement(params, 'IncludeRealtimeData')
+        include_rt.text = 'true' if include_realtime else 'false'
+        track_sections = ET.SubElement(params, 'IncludeTrackSections')
+        track_sections.text = 'false'
+        
+        # Convert to string and make request
+        xml_string = ET.tostring(trias, encoding='utf-8', method='xml')
+        xml_declaration = b'<?xml version="1.0" encoding="UTF-8"?>\n'
+        xml_body = xml_declaration + xml_string
+        
+        response_root = self._make_request(xml_body.decode('utf-8'))
+        
+        # Parse response
+        trips = self._parse_trip_results(response_root)
+        
+        return {
+            'origin': {
+                'name': origin_loc.get('stop_name') or origin,
+                'stop_id': origin_loc.get('stop_id'),
+                'latitude': origin_loc.get('latitude'),
+                'longitude': origin_loc.get('longitude')
+            },
+            'destination': {
+                'name': dest_loc.get('stop_name') or destination,
+                'stop_id': dest_loc.get('stop_id'),
+                'latitude': dest_loc.get('latitude'),
+                'longitude': dest_loc.get('longitude')
+            },
+            'trips': trips
+        }
+    
     def _parse_location_results(self, root: ET.Element) -> List[Dict[str, Any]]:
         """Parse LocationInformationResponse"""
         results = []
@@ -247,15 +352,50 @@ class TriasClient:
                 print(f"Error parsing location result: {e}")
                 continue
         
-        # Deduplicate by stop_id
-        seen = set()
-        deduplicated = []
+        # Group by stop name and combine
+        grouped = {}
         for result in results:
-            if result['stop_id'] not in seen:
-                seen.add(result['stop_id'])
-                deduplicated.append(result)
+            stop_name = result['stop_name']
+            if not stop_name:
+                continue
+                
+            if stop_name not in grouped:
+                # First occurrence - keep as is but prepare for multiple IDs
+                grouped[stop_name] = {
+                    'stop_id': [result['stop_id']],
+                    'stop_name': stop_name,
+                    'locality': result['locality'],
+                    'longitude': result['longitude'],
+                    'latitude': result['latitude'],
+                    'platforms': 1
+                }
+            else:
+                # Additional platform/variant - add ID and update coordinates if missing
+                grouped[stop_name]['stop_id'].append(result['stop_id'])
+                grouped[stop_name]['platforms'] += 1
+                
+                # Use first coordinates if current one is None
+                if grouped[stop_name]['longitude'] is None and result['longitude'] is not None:
+                    grouped[stop_name]['longitude'] = result['longitude']
+                    grouped[stop_name]['latitude'] = result['latitude']
         
-        return deduplicated
+        # Convert grouped results back to list format
+        combined_results = []
+        for stop_name, data in grouped.items():
+            # Use first stop_id as primary (for backward compatibility)
+            # but include all IDs in the result
+            result = {
+                'stop_id': data['stop_id'][0],  # Primary ID
+                'stop_ids': data['stop_id'],     # All IDs
+                'stop_name': data['stop_name'],
+                'locality': data['locality'],
+                'longitude': data['longitude'],
+                'latitude': data['latitude'],
+                'platforms': data['platforms']
+            }
+            combined_results.append(result)
+        
+        return combined_results
     
     def _parse_departure_results(self, root: ET.Element) -> List[Dict[str, Any]]:
         """Parse StopEventResponse"""
@@ -319,3 +459,149 @@ class TriasClient:
                 continue
         
         return results
+    
+    def _parse_trip_results(self, root: ET.Element) -> List[Dict[str, Any]]:
+        """Parse TripResponse"""
+        trips = []
+        
+        for trip_result in root.findall('.//trias:TripResult', self.namespaces):
+            try:
+                trip = trip_result.find('trias:Trip', self.namespaces)
+                if trip is None:
+                    continue
+                
+                # Get overall trip times
+                start_time = trip.findtext('trias:StartTime', default=None, namespaces=self.namespaces)
+                end_time = trip.findtext('trias:EndTime', default=None, namespaces=self.namespaces)
+                duration = trip.findtext('trias:Duration', default=None, namespaces=self.namespaces)
+                
+                # Parse legs
+                legs = []
+                for leg_elem in trip.findall('trias:TripLeg', self.namespaces):
+                    leg_data = self._parse_trip_leg(leg_elem)
+                    if leg_data:
+                        legs.append(leg_data)
+                
+                trip_data = {
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'duration': duration,
+                    'legs': legs
+                }
+                
+                trips.append(trip_data)
+                
+            except Exception as e:
+                print(f"Error parsing trip result: {e}")
+                continue
+        
+        return trips
+    
+    def _parse_trip_leg(self, leg_elem: ET.Element) -> Optional[Dict[str, Any]]:
+        """Parse a single trip leg (TimedLeg or ContinuousLeg)"""
+        
+        # Check for ContinuousLeg (walk, etc.)
+        cont_leg = leg_elem.find('trias:ContinuousLeg', self.namespaces)
+        if cont_leg is not None:
+            return self._parse_continuous_leg(cont_leg)
+        
+        # Check for TimedLeg (public transport)
+        timed_leg = leg_elem.find('trias:TimedLeg', self.namespaces)
+        if timed_leg is not None:
+            return self._parse_timed_leg(timed_leg)
+        
+        return None
+    
+    def _parse_continuous_leg(self, leg: ET.Element) -> Dict[str, Any]:
+        """Parse ContinuousLeg (walking, etc.)"""
+        
+        # Get start point
+        start_elem = leg.find('.//trias:LegStart', self.namespaces)
+        start_name = None
+        start_time = None
+        if start_elem is not None:
+            start_name = start_elem.findtext('.//trias:StopPointName/trias:Text', default=None, namespaces=self.namespaces)
+            if not start_name:
+                start_name = start_elem.findtext('.//trias:LocationName/trias:Text', default=None, namespaces=self.namespaces)
+            start_time = start_elem.findtext('trias:Time', default=None, namespaces=self.namespaces)
+            if not start_time:
+                start_time = start_elem.findtext('trias:EstimatedTime', default=None, namespaces=self.namespaces)
+        
+        # Get end point
+        end_elem = leg.find('.//trias:LegEnd', self.namespaces)
+        end_name = None
+        end_time = None
+        if end_elem is not None:
+            end_name = end_elem.findtext('.//trias:StopPointName/trias:Text', default=None, namespaces=self.namespaces)
+            if not end_name:
+                end_name = end_elem.findtext('.//trias:LocationName/trias:Text', default=None, namespaces=self.namespaces)
+            end_time = end_elem.findtext('trias:Time', default=None, namespaces=self.namespaces)
+            if not end_time:
+                end_time = end_elem.findtext('trias:EstimatedTime', default=None, namespaces=self.namespaces)
+        
+        # Get duration
+        duration = leg.findtext('trias:Duration', default=None, namespaces=self.namespaces)
+        
+        return {
+            'type': 'continuous',
+            'mode': 'walk',
+            'from': start_name or 'Unknown',
+            'to': end_name or 'Unknown',
+            'departure_time': start_time,
+            'arrival_time': end_time,
+            'duration': duration
+        }
+    
+    def _parse_timed_leg(self, leg: ET.Element) -> Dict[str, Any]:
+        """Parse TimedLeg (public transport)"""
+        
+        # Get boarding point
+        board_elem = leg.find('.//trias:LegBoard', self.namespaces)
+        board_name = None
+        board_time = None
+        board_time_planned = None
+        if board_elem is not None:
+            board_name = board_elem.findtext('.//trias:StopPointName/trias:Text', default=None, namespaces=self.namespaces)
+            board_time = board_elem.findtext('.//trias:ServiceDeparture/trias:EstimatedTime', default=None, namespaces=self.namespaces)
+            board_time_planned = board_elem.findtext('.//trias:ServiceDeparture/trias:TimetabledTime', default=None, namespaces=self.namespaces)
+            if not board_time:
+                board_time = board_time_planned
+        
+        # Get alighting point
+        alight_elem = leg.find('.//trias:LegAlight', self.namespaces)
+        alight_name = None
+        alight_time = None
+        alight_time_planned = None
+        if alight_elem is not None:
+            alight_name = alight_elem.findtext('.//trias:StopPointName/trias:Text', default=None, namespaces=self.namespaces)
+            alight_time = alight_elem.findtext('.//trias:ServiceArrival/trias:EstimatedTime', default=None, namespaces=self.namespaces)
+            alight_time_planned = alight_elem.findtext('.//trias:ServiceArrival/trias:TimetabledTime', default=None, namespaces=self.namespaces)
+            if not alight_time:
+                alight_time = alight_time_planned
+        
+        # Get service info
+        service = leg.find('.//trias:Service', self.namespaces)
+        line = None
+        mode = None
+        destination = None
+        if service is not None:
+            line = service.findtext('.//trias:PublishedLineName/trias:Text', default=None, namespaces=self.namespaces)
+            mode = service.findtext('.//trias:Mode/trias:PtMode', default=None, namespaces=self.namespaces)
+            destination = service.findtext('.//trias:DestinationText/trias:Text', default=None, namespaces=self.namespaces)
+        
+        # Get duration
+        duration = leg.findtext('trias:Duration', default=None, namespaces=self.namespaces)
+        
+        return {
+            'type': 'timed',
+            'mode': mode or 'unknown',
+            'line': line or 'Unknown',
+            'destination': destination,
+            'from': board_name or 'Unknown',
+            'to': alight_name or 'Unknown',
+            'departure_time': board_time,
+            'departure_time_planned': board_time_planned,
+            'arrival_time': alight_time,
+            'arrival_time_planned': alight_time_planned,
+            'duration': duration
+        }

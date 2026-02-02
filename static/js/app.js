@@ -27,6 +27,14 @@ const realtimeCheck = document.getElementById('realtime-check');
 const departuresBtn = document.getElementById('departures-btn');
 const departuresResults = document.getElementById('departures-results');
 
+// Route planning tab
+const routeOriginInput = document.getElementById('route-origin');
+const routeDestinationInput = document.getElementById('route-destination');
+const routeLimitInput = document.getElementById('route-limit');
+const routeRealtimeCheck = document.getElementById('route-realtime-check');
+const routeBtn = document.getElementById('route-btn');
+const routeResults = document.getElementById('route-results');
+
 // Tab switching
 tabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -148,17 +156,53 @@ async function getDepartures(stopId, limit, window, realtime) {
     }
 }
 
+// Get route/trip from origin to destination
+async function getRoute(origin, destination, limit, realtime) {
+    showLoading();
+    routeResults.innerHTML = '';
+    
+    try {
+        const response = await fetch(
+            `${API_BASE}/api/trip?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&limit=${limit}&realtime=${realtime}`
+        );
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Fehler beim Laden der Daten');
+        }
+        
+        if (!data.trips || data.trips.length === 0) {
+            showInfo(routeResults, 'Keine Verbindungen gefunden.');
+            return;
+        }
+        
+        displayTrips(data);
+    } catch (error) {
+        showError(routeResults, error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
 // Display location results
 function displayLocationResults(container, results) {
-    container.innerHTML = results.map(result => `
-        <div class="result-item" onclick="selectStop('${result.stop_id}', '${escapeHtml(result.stop_name)}')">
-            <h3>${escapeHtml(result.stop_name || 'Unbekannt')}</h3>
-            ${result.locality ? `<p>📍 ${escapeHtml(result.locality)}</p>` : ''}
-            ${result.latitude && result.longitude ? 
-                `<p>🌐 ${result.latitude.toFixed(6)}, ${result.longitude.toFixed(6)}</p>` : ''}
-            <span class="stop-id">${escapeHtml(result.stop_id)}</span>
-        </div>
-    `).join('');
+    container.innerHTML = results.map(result => {
+        const platformInfo = result.platforms > 1 ? ` (${result.platforms} platforms)` : '';
+        const stopIds = result.stop_ids || [result.stop_id];
+        const stopIdDisplay = stopIds.length > 1 
+            ? `${stopIds.length} stops: ${stopIds.slice(0, 3).join(', ')}${stopIds.length > 3 ? '...' : ''}`
+            : stopIds[0];
+        
+        return `
+            <div class="result-item" onclick="selectStop('${result.stop_id}', '${escapeHtml(result.stop_name)}')">
+                <h3>${escapeHtml(result.stop_name || 'Unbekannt')}${platformInfo}</h3>
+                ${result.locality ? `<p>📍 ${escapeHtml(result.locality)}</p>` : ''}
+                ${result.latitude && result.longitude ? 
+                    `<p>🌐 ${result.latitude.toFixed(6)}, ${result.longitude.toFixed(6)}</p>` : ''}
+                <span class="stop-id">${escapeHtml(stopIdDisplay)}</span>
+            </div>
+        `;
+    }).join('');
 }
 
 // Display departures
@@ -192,6 +236,103 @@ function displayDepartures(departures) {
             </div>
         `;
     }).join('');
+}
+
+// Display trips/routes
+function displayTrips(data) {
+    let html = `
+        <div class="route-header">
+            <h3>Von: ${escapeHtml(data.origin.name)}</h3>
+            <h3>Nach: ${escapeHtml(data.destination.name)}</h3>
+        </div>
+    `;
+    
+    html += data.trips.map((trip, idx) => {
+        const startTime = formatTime(trip.start_time);
+        const endTime = formatTime(trip.end_time);
+        const duration = parseDuration(trip.duration);
+        
+        let legsHtml = trip.legs.map(leg => {
+            if (leg.type === 'continuous' && leg.mode === 'walk') {
+                return `
+                    <div class="trip-leg walk-leg">
+                        <div class="leg-icon">🚶</div>
+                        <div class="leg-details">
+                            <div class="leg-mode">Fußweg</div>
+                            <div class="leg-route">${escapeHtml(leg.from)} → ${escapeHtml(leg.to)}</div>
+                            ${leg.duration ? `<div class="leg-duration">${parseDuration(leg.duration)}</div>` : ''}
+                        </div>
+                        <div class="leg-times">
+                            <div>${formatTime(leg.departure_time)}</div>
+                            <div>${formatTime(leg.arrival_time)}</div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                const modeIcon = getModeIcon(leg.mode);
+                return `
+                    <div class="trip-leg transit-leg">
+                        <div class="leg-icon">${modeIcon}</div>
+                        <div class="leg-details">
+                            <div class="leg-line">${escapeHtml(leg.line)}</div>
+                            <div class="leg-mode">${escapeHtml(leg.mode)}${leg.destination ? ` → ${escapeHtml(leg.destination)}` : ''}</div>
+                            <div class="leg-route">${escapeHtml(leg.from)} → ${escapeHtml(leg.to)}</div>
+                        </div>
+                        <div class="leg-times">
+                            <div>${formatTime(leg.departure_time)}</div>
+                            <div>${formatTime(leg.arrival_time)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }).join('');
+        
+        return `
+            <div class="trip-card">
+                <div class="trip-header">
+                    <div class="trip-number">Verbindung ${idx + 1}</div>
+                    <div class="trip-summary">
+                        <span class="trip-time">${startTime} → ${endTime}</span>
+                        ${duration ? `<span class="trip-duration">${duration}</span>` : ''}
+                    </div>
+                </div>
+                <div class="trip-legs">
+                    ${legsHtml}
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    routeResults.innerHTML = html;
+}
+
+// Get mode icon
+function getModeIcon(mode) {
+    const icons = {
+        'tram': '🚊',
+        'bus': '🚌',
+        'train': '🚆',
+        'metro': '🚇',
+        'subway': '🚇',
+        'rail': '🚆'
+    };
+    return icons[mode.toLowerCase()] || '🚆';
+}
+
+// Parse ISO 8601 duration (PT15M, PT1H30M, etc.)
+function parseDuration(duration) {
+    if (!duration) return '';
+    
+    const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
+    if (!match) return duration;
+    
+    const hours = parseInt(match[1] || 0);
+    const minutes = parseInt(match[2] || 0);
+    
+    if (hours > 0) {
+        return `${hours}h ${minutes}min`;
+    }
+    return `${minutes}min`;
 }
 
 // Select a stop (switch to departures tab and fill in stop ID)
@@ -297,6 +438,34 @@ departuresBtn.addEventListener('click', () => {
 stopIdInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         departuresBtn.click();
+    }
+});
+
+// Route planning button
+routeBtn.addEventListener('click', () => {
+    const origin = routeOriginInput.value.trim();
+    const destination = routeDestinationInput.value.trim();
+    const limit = parseInt(routeLimitInput.value);
+    const realtime = routeRealtimeCheck.checked;
+    
+    if (!origin || !destination) {
+        showError(routeResults, 'Bitte geben Sie Start und Ziel ein.');
+        return;
+    }
+    
+    getRoute(origin, destination, limit, realtime);
+});
+
+// Enter key in route inputs
+routeOriginInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        routeDestinationInput.focus();
+    }
+});
+
+routeDestinationInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        routeBtn.click();
     }
 });
 

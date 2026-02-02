@@ -126,6 +126,35 @@ def get_departures():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/trip', methods=['GET'])
+def get_trip():
+    """
+    Get trip/route from origin to destination
+    
+    Query parameters:
+    - origin: Origin location name or address (required)
+    - destination: Destination location name or address (required)
+    - limit: Maximum number of trips (optional, default: 5)
+    - realtime: Include realtime data (optional, default: true)
+    
+    Example: /api/trip?origin=Hauptplatz&destination=Jakominiplatz&limit=3
+    """
+    origin = request.args.get('origin')
+    destination = request.args.get('destination')
+    
+    if not origin or not destination:
+        return jsonify({'error': 'Query parameters "origin" and "destination" are required'}), 400
+    
+    limit = request.args.get('limit', 5, type=int)
+    realtime = request.args.get('realtime', 'true').lower() in ('true', '1', 'yes')
+    
+    try:
+        result = trias.get_trip(origin, destination, limit, realtime)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""

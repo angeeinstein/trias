@@ -17,6 +17,7 @@
             <button class="tab-button active" data-tab="search">🔍 Haltestellensuche</button>
             <button class="tab-button" data-tab="nearby">📍 In der Nähe</button>
             <button class="tab-button" data-tab="departures">🚏 Abfahrten</button>
+            <button class="tab-button" data-tab="route">🗺️ Route planen</button>
         </div>
 
         <!-- Tab: Search by Name -->
@@ -80,6 +81,33 @@
                 </div>
                 <button id="departures-btn" class="btn btn-primary">Abfahrten abrufen</button>
                 <div id="departures-results" class="results-container"></div>
+            </div>
+        </div>
+
+        <!-- Tab: Route Planning -->
+        <div id="route-tab" class="tab-content">
+            <div class="card">
+                <h2>Route planen</h2>
+                <div class="form-group">
+                    <label for="route-origin">Von (Start):</label>
+                    <input type="text" id="route-origin" placeholder="z.B. Hauptplatz, Jakominiplatz..." />
+                </div>
+                <div class="form-group">
+                    <label for="route-destination">Nach (Ziel):</label>
+                    <input type="text" id="route-destination" placeholder="z.B. Jakominiplatz, Joanneum..." />
+                </div>
+                <div class="form-group">
+                    <label for="route-limit">Anzahl der Verbindungen:</label>
+                    <input type="number" id="route-limit" value="5" min="1" max="10" />
+                </div>
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="route-realtime-check" checked />
+                        Echtzeitdaten einbeziehen
+                    </label>
+                </div>
+                <button id="route-btn" class="btn btn-primary">Route suchen</button>
+                <div id="route-results" class="results-container"></div>
             </div>
         </div>
 

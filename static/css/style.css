@@ -451,6 +451,110 @@ footer a {
     text-decoration: underline;
 }
 
+/* Trip Display Styles */
+.trip-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.trip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #f0f0f0;
+}
+
+.trip-time {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.trip-duration {
+    font-size: 0.9rem;
+    color: #666;
+    background: #f0f0f0;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+}
+
+.trip-legs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.trip-leg {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    border-radius: 6px;
+    background: #f9f9f9;
+}
+
+.walk-leg {
+    background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
+    border-left: 4px solid #9c27b0;
+}
+
+.transit-leg {
+    background: linear-gradient(135deg, #fff3e0, #ffe0b2);
+    border-left: 4px solid #ff6f00;
+}
+
+.leg-icon {
+    font-size: 1.5rem;
+    margin-right: 1rem;
+    min-width: 2rem;
+    text-align: center;
+}
+
+.leg-details {
+    flex: 1;
+}
+
+.leg-mode {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 0.3rem;
+}
+
+.leg-info {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0.2rem;
+}
+
+.leg-times {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: #555;
+}
+
+.leg-time {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.leg-time-label {
+    font-weight: 500;
+}
+
+.leg-duration {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 0.2rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     header h1 {
