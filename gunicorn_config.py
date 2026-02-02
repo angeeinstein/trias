@@ -1,9 +1,14 @@
 """Gunicorn configuration file for TRIAS API server"""
 
 import multiprocessing
+import os
 
 # Server socket
-bind = "0.0.0.0:80"
+# Port 80 requires root or CAP_NET_BIND_SERVICE capability
+# Use 8080 for non-root users or set USE_PORT_80=true in environment
+use_port_80 = os.environ.get('USE_PORT_80', 'false').lower() == 'true'
+port = 80 if use_port_80 else 8080
+bind = f"0.0.0.0:{port}"
 backlog = 2048
 
 # Worker processes

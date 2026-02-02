@@ -431,21 +431,30 @@ set_permissions() {
 configure_firewall() {
     print_header "Configuring Firewall"
     
+    # Determine which port to open (80 or 8080)
+    if grep -q "USE_PORT_80=true" "$INSTALL_DIR/trias.service" 2>/dev/null; then
+        FIREWALL_PORT=80
+    else
+        FIREWALL_PORT=8080
+    fi
+    
+    print_info "Opening port $FIREWALL_PORT for the application..."
+    
     # Check if firewall is active
     if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
         print_info "Configuring UFW firewall..."
-        ufw allow 80/tcp comment "TRIAS API Server" || print_warning "Failed to configure UFW"
-        print_success "UFW configured"
+        ufw allow ${FIREWALL_PORT}/tcp comment "TRIAS API Server" || print_warning "Failed to configure UFW"
+        print_success "UFW configured for port $FIREWALL_PORT"
         
     elif command -v firewall-cmd &> /dev/null && systemctl is-active firewalld &> /dev/null; then
         print_info "Configuring firewalld..."
-        firewall-cmd --permanent --add-port=80/tcp || print_warning "Failed to configure firewalld"
+        firewall-cmd --permanent --add-port=${FIREWALL_PORT}/tcp || print_warning "Failed to configure firewalld"
         firewall-cmd --reload || print_warning "Failed to reload firewalld"
-        print_success "Firewalld configured"
+        print_success "Firewalld configured for port $FIREWALL_PORT"
         
     else
         print_warning "No supported firewall detected or firewall not active"
-        print_info "Port 80 may need to be opened manually"
+        print_info "Port $FIREWALL_PORT may need to be opened manually"
     fi
 }
 
@@ -517,12 +526,20 @@ show_status() {
     systemctl status "$SERVICE_NAME" --no-pager || true
     echo ""
     
-    # Test HTTP connection
-    print_info "Testing HTTP connection..."
-    if curl -s -o /dev/null -w "%{http_code}" http://localhost:80/ | grep -q "200"; then
-        print_success "Server is responding on port 80"
+    # Detect which port is being used
+    if grep -q "USE_PORT_80=true" "$INSTALL_DIR/trias.service" 2>/dev/null || \
+       grep -q 'Environment="USE_PORT_80=true"' /etc/systemd/system/"$SERVICE_NAME" 2>/dev/null; then
+        TEST_PORT=80
     else
-        print_warning "Server is not responding on port 80"
+        TEST_PORT=8080
+    fi
+    
+    # Test HTTP connection
+    print_info "Testing HTTP connection on port $TEST_PORT..."
+    if curl -s -o /dev/null -w "%{http_code}" http://localhost:${TEST_PORT}/ | grep -q "200"; then
+        print_success "Server is responding on port $TEST_PORT"
+    else
+        print_warning "Server is not responding on port $TEST_PORT"
     fi
     
     echo ""
@@ -580,8 +597,24 @@ fresh_install() {
         print_success "Installation completed successfully!"
         echo ""
         print_info "Service Status: $(systemctl is-active $SERVICE_NAME)"
-        print_info "Access the web interface at: http://$(hostname -I | awk '{print $1}')"
-        print_info "Or locally at: http://localhost"
+        
+        # Detect which port is configured
+        if grep -q 'USE_PORT_80=true' /etc/systemd/system/"$SERVICE_NAME" 2>/dev/null; then
+            SERVER_PORT=80
+        else
+            SERVER_PORT=8080
+        fi
+        
+        print_info "Access the web interface at: http://$(hostname -I | awk '{print $1}'):$SERVER_PORT"
+        print_info "Or locally at: http://localhost:$SERVER_PORT"
+        echo ""
+        print_info "Note: Server is running on port $SERVER_PORT"
+        if [ "$SERVER_PORT" = "8080" ]; then
+            echo "  To use port 80, edit /etc/systemd/system/$SERVICE_NAME:"
+            echo "  1. Change: Environment=\"USE_PORT_80=false\" to Environment=\"USE_PORT_80=true\""
+            echo "  2. Uncomment: AmbientCapabilities=CAP_NET_BIND_SERVICE"
+            echo "  3. Run: sudo systemctl daemon-reload && sudo systemctl restart $SERVICE_NAME"
+        fi
         echo ""
         print_info "Useful commands:"
         echo "  - View status:  sudo systemctl status $SERVICE_NAME"
