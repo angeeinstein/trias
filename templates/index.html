@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TRIAS - Öffentliche Verkehrsdaten</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4">
 </head>
 <body>
     <div class="container">
@@ -18,6 +18,7 @@
             <button class="tab-button" data-tab="nearby">📍 In der Nähe</button>
             <button class="tab-button" data-tab="departures">🚏 Abfahrten</button>
             <button class="tab-button" data-tab="route">🗺️ Route planen</button>
+            <button class="tab-button" data-tab="cache">⚡ Cache</button>
         </div>
 
         <!-- Tab: Search by Name -->
@@ -111,6 +112,65 @@
             </div>
         </div>
 
+        <!-- Tab: Cache Management -->
+        <div id="cache-tab" class="tab-content">
+            <div class="card">
+                <h2>Cache Verwaltung</h2>
+                
+                <!-- Cache Statistics -->
+                <div id="cache-stats" class="cache-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Gespeicherte Haltestellen:</span>
+                        <span id="cache-stop-count" class="stat-value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Cache Alter:</span>
+                        <span id="cache-age" class="stat-value">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Status:</span>
+                        <span id="cache-status" class="stat-value">-</span>
+                    </div>
+                </div>
+
+                <button id="cache-refresh-btn" class="btn btn-secondary">Statistik aktualisieren</button>
+
+                <hr style="margin: 20px 0; border: none; border-top: 1px solid #e0e0e0;">
+
+                <!-- Cache Building Configuration -->
+                <h3>Cache automatisch aufbauen</h3>
+                <p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">
+                    Baut den Cache automatisch auf, indem Haltestellen in österreichischen Städten abgefragt werden.
+                    Dies verbessert die Suchgeschwindigkeit erheblich.
+                </p>
+
+                <div class="form-group">
+                    <label for="stops-per-city">Haltestellen pro Stadt:</label>
+                    <input type="number" id="stops-per-city" value="100" min="10" max="500" step="10" />
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        Höhere Werte = mehr Daten, längere Laufzeit
+                    </small>
+                </div>
+
+                <div class="cache-controls">
+                    <button id="cache-build-btn" class="btn btn-primary">Cache aufbauen</button>
+                    <button id="cache-stop-btn" class="btn btn-danger hidden">Abbrechen</button>
+                </div>
+
+                <!-- Progress Display -->
+                <div id="cache-progress-container" class="progress-container hidden">
+                    <div class="progress-info">
+                        <span id="cache-current-city">-</span>
+                        <span id="cache-progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div id="cache-progress-bar" class="progress-bar"></div>
+                    </div>
+                    <div id="cache-progress-details" class="progress-details">-</div>
+                </div>
+            </div>
+        </div>
+
         <footer>
             <p>Datenquelle: <a href="http://ogdtrias.verbundlinie.at:8183/stv/trias" target="_blank">TRIAS (Verbund Linie OGD)</a></p>
         </footer>
@@ -121,6 +181,6 @@
         <p>Lade Daten...</p>
     </div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}?v=4"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}?v=5"></script>
 </body>
 </html>

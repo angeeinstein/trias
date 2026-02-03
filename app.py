@@ -2,10 +2,55 @@
 
 from flask import Flask, request, jsonify, render_template
 from trias_client import TriasClient
-from config import DEFAULT_NUMBER_OF_RESULTS, DEFAULT_DEPARTURE_WINDOW_MINUTES, DEFAULT_GEO_RADIUS_METERS
+from config import DEFAULT_NUMBER_OF_RESULTS, DEFAULT_DEPARTURE_WINDOW_MINUTES, DEFAULT_GEO_RADIUS_METERS, STOP_CACHE_FILE
+import threading
+import time
+from datetime import datetime
+import os
 
 app = Flask(__name__)
 trias = TriasClient()
+
+# Global variable for cache building progress
+cache_build_progress = {
+    'running': False,
+    'total': 0,
+    'current': 0,
+    'current_city': '',
+    'error': None
+}
+
+
+def build_cache_background(cities, stops_per_city):
+    """Build cache in background thread"""
+    global cache_build_progress
+    
+    cache_build_progress['running'] = True
+    cache_build_progress['total'] = len(cities)
+    cache_build_progress['current'] = 0
+    cache_build_progress['error'] = None
+    
+    try:
+        for i, city in enumerate(cities):
+            if not cache_build_progress['running']:
+                break
+                
+            cache_build_progress['current'] = i + 1
+            cache_build_progress['current_city'] = city
+            
+            try:
+                # Fetch stops for this city
+                results = trias._fetch_location_by_name(city, stops_per_city)
+                trias._add_to_cache(results)
+                time.sleep(0.5)  # Small delay to avoid overwhelming API
+            except Exception as e:
+                print(f"[CACHE] Error building cache for {city}: {e}")
+                
+    except Exception as e:
+        cache_build_progress['error'] = str(e)
+    finally:
+        cache_build_progress['running'] = False
+        cache_build_progress['current_city'] = 'Abgeschlossen'
 
 
 @app.after_request
@@ -173,6 +218,62 @@ def get_trip():
 def health():
     """Health check endpoint"""
     return jsonify({'status': 'ok'})
+
+
+@app.route('/api/cache/stats', methods=['GET'])
+def cache_stats():
+    """Get cache statistics"""
+    try:
+        stats = {
+            'enabled': trias.stop_cache is not None,
+            'total_stops': len(trias.stop_cache) if trias.stop_cache else 0,
+            'cache_age_hours': (datetime.utcnow() - trias.cache_timestamp).total_seconds() / 3600 if trias.cache_timestamp else None,
+            'cache_file_exists': os.path.exists(STOP_CACHE_FILE)
+        }
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/cache/build', methods=['POST'])
+def build_cache():
+    """Start building cache in background"""
+    global cache_build_progress
+    
+    if cache_build_progress['running']:
+        return jsonify({'error': 'Cache building already in progress'}), 400
+    
+    data = request.get_json() or {}
+    cities = data.get('cities', ['Wien', 'Graz', 'Linz', 'Salzburg', 'Innsbruck', 
+                                  'Klagenfurt', 'Villach', 'Wels', 'St. Pölten', 'Dornbirn',
+                                  'Feldkirch', 'Bregenz', 'Steyr', 'Wolfsberg', 'Baden',
+                                  'Leoben', 'Krems', 'Wiener Neustadt', 'Amstetten', 'Kapfenberg'])
+    stops_per_city = data.get('stops_per_city', 100)
+    
+    # Start background thread
+    thread = threading.Thread(target=build_cache_background, args=(cities, stops_per_city))
+    thread.daemon = True
+    thread.start()
+    
+    return jsonify({
+        'message': 'Cache building started',
+        'cities': len(cities),
+        'stops_per_city': stops_per_city
+    })
+
+
+@app.route('/api/cache/progress', methods=['GET'])
+def cache_progress():
+    """Get cache building progress"""
+    return jsonify(cache_build_progress)
+
+
+@app.route('/api/cache/stop', methods=['POST'])
+def stop_cache_build():
+    """Stop cache building"""
+    global cache_build_progress
+    cache_build_progress['running'] = False
+    return jsonify({'message': 'Cache building stopped'})
 
 
 if __name__ == '__main__':

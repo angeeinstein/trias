@@ -582,3 +582,193 @@ tabs.forEach(tab => {
         tab.addEventListener('click', stopAutoRefresh);
     }
 });
+// ======================
+// Cache Management
+// ======================
+
+// Cache tab elements
+const cacheRefreshBtn = document.getElementById('cache-refresh-btn');
+const cacheBuildBtn = document.getElementById('cache-build-btn');
+const cacheStopBtn = document.getElementById('cache-stop-btn');
+const stopsPerCityInput = document.getElementById('stops-per-city');
+const cacheStopCount = document.getElementById('cache-stop-count');
+const cacheAge = document.getElementById('cache-age');
+const cacheStatus = document.getElementById('cache-status');
+const cacheProgressContainer = document.getElementById('cache-progress-container');
+const cacheCurrentCity = document.getElementById('cache-current-city');
+const cacheProgressPercent = document.getElementById('cache-progress-percent');
+const cacheProgressBar = document.getElementById('cache-progress-bar');
+const cacheProgressDetails = document.getElementById('cache-progress-details');
+
+let progressPollInterval = null;
+
+// Load cache statistics
+async function loadCacheStats() {
+    try {
+        const response = await fetch(`${API_BASE}/api/cache/stats`);
+        const data = await response.json();
+        
+        cacheStopCount.textContent = data.total_stops.toLocaleString();
+        
+        if (data.cache_age_hours !== null) {
+            if (data.cache_age_hours < 1) {
+                cacheAge.textContent = '< 1 Stunde';
+            } else if (data.cache_age_hours < 24) {
+                cacheAge.textContent = `${Math.floor(data.cache_age_hours)} Stunden`;
+            } else {
+                const days = Math.floor(data.cache_age_hours / 24);
+                cacheAge.textContent = `${days} Tag${days > 1 ? 'e' : ''}`;
+            }
+        } else {
+            cacheAge.textContent = 'Neu';
+        }
+        
+        if (data.file_exists) {
+            cacheStatus.textContent = '✅ Aktiv';
+            cacheStatus.style.color = 'var(--success-color)';
+        } else {
+            cacheStatus.textContent = '⚠️ Leer';
+            cacheStatus.style.color = 'var(--warning-color)';
+        }
+    } catch (error) {
+        console.error('Failed to load cache stats:', error);
+        cacheStatus.textContent = '❌ Fehler';
+        cacheStatus.style.color = 'var(--danger-color)';
+    }
+}
+
+// Start building cache
+async function startCacheBuilding() {
+    const stopsPerCity = parseInt(stopsPerCityInput.value);
+    
+    try {
+        cacheBuildBtn.disabled = true;
+        cacheBuildBtn.textContent = 'Starte...';
+        
+        const response = await fetch(`${API_BASE}/api/cache/build`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stops_per_city: stopsPerCity })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'started') {
+            // Show progress container
+            cacheProgressContainer.classList.remove('hidden');
+            cacheBuildBtn.classList.add('hidden');
+            cacheStopBtn.classList.remove('hidden');
+            
+            // Start polling progress
+            startProgressPolling();
+        } else {
+            alert(`Fehler: ${data.message}`);
+            cacheBuildBtn.disabled = false;
+            cacheBuildBtn.textContent = 'Cache aufbauen';
+        }
+    } catch (error) {
+        console.error('Failed to start cache building:', error);
+        alert('Fehler beim Starten des Cache-Aufbaus');
+        cacheBuildBtn.disabled = false;
+        cacheBuildBtn.textContent = 'Cache aufbauen';
+    }
+}
+
+// Stop building cache
+async function stopCacheBuilding() {
+    try {
+        cacheStopBtn.disabled = true;
+        cacheStopBtn.textContent = 'Stoppe...';
+        
+        const response = await fetch(`${API_BASE}/api/cache/stop`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'stopped' || data.status === 'not_running') {
+            stopProgressPolling();
+            resetCacheBuildUI();
+            loadCacheStats();
+        }
+    } catch (error) {
+        console.error('Failed to stop cache building:', error);
+        cacheStopBtn.disabled = false;
+        cacheStopBtn.textContent = 'Abbrechen';
+    }
+}
+
+// Poll progress
+function startProgressPolling() {
+    if (progressPollInterval) {
+        clearInterval(progressPollInterval);
+    }
+    
+    progressPollInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`${API_BASE}/api/cache/progress`);
+            const data = await response.json();
+            
+            if (!data.running) {
+                // Building finished or stopped
+                stopProgressPolling();
+                resetCacheBuildUI();
+                loadCacheStats();
+                
+                if (data.current === data.total && data.total > 0) {
+                    alert('Cache-Aufbau abgeschlossen!');
+                }
+                return;
+            }
+            
+            // Update UI
+            cacheCurrentCity.textContent = data.current_city || 'Starte...';
+            const percent = data.total > 0 ? Math.round((data.current / data.total) * 100) : 0;
+            cacheProgressPercent.textContent = `${percent}%`;
+            cacheProgressBar.style.width = `${percent}%`;
+            cacheProgressDetails.textContent = `${data.current} von ${data.total} Städten verarbeitet`;
+            
+        } catch (error) {
+            console.error('Failed to poll progress:', error);
+        }
+    }, 1000); // Poll every second
+}
+
+function stopProgressPolling() {
+    if (progressPollInterval) {
+        clearInterval(progressPollInterval);
+        progressPollInterval = null;
+    }
+}
+
+function resetCacheBuildUI() {
+    cacheProgressContainer.classList.add('hidden');
+    cacheBuildBtn.classList.remove('hidden');
+    cacheStopBtn.classList.add('hidden');
+    cacheBuildBtn.disabled = false;
+    cacheBuildBtn.textContent = 'Cache aufbauen';
+    cacheStopBtn.disabled = false;
+    cacheStopBtn.textContent = 'Abbrechen';
+}
+
+// Event listeners
+cacheRefreshBtn.addEventListener('click', loadCacheStats);
+cacheBuildBtn.addEventListener('click', startCacheBuilding);
+cacheStopBtn.addEventListener('click', stopCacheBuilding);
+
+// Load cache stats when cache tab is opened
+document.querySelector('[data-tab="cache"]').addEventListener('click', () => {
+    loadCacheStats();
+    // Check if building is in progress
+    fetch(`${API_BASE}/api/cache/progress`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.running) {
+                cacheProgressContainer.classList.remove('hidden');
+                cacheBuildBtn.classList.add('hidden');
+                cacheStopBtn.classList.remove('hidden');
+                startProgressPolling();
+            }
+        })
+        .catch(error => console.error('Failed to check progress:', error));
+});
